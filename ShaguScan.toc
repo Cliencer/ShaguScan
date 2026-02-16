@@ -1,8 +1,10 @@
 ## Interface: 11200
 ## Title: |cffffcc00Shagu|cffffffffScan
+## Title-zhCN:|CFF33AAFF[辅助]|cffffcc00Shagu|cffffffffScan|r海蓝钢板魔改版
 ## Author: Shagu,Cliencer
 ## Notes: Uses SuperWoW GUIDs to show nearby units
-## Version: 1.0
+## Notes-zhCN: 基于SuperWoW的扫描附件生物插件，指令/scan
+## Version: 1.0.1
 ## SavedVariablesPerCharacter: ShaguScan_db
 locale.lua
 global.lua
