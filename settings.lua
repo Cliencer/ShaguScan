@@ -14,14 +14,18 @@ end
 settings.backdrop = {
   edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
   bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-  tile = true, tileSize = 16, edgeSize = 12,
+  tile = true,
+  tileSize = 16,
+  edgeSize = 12,
   insets = { left = 2, right = 2, top = 2, bottom = 2 }
 }
 
 settings.textborder = {
   edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
   bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-  tile = true, tileSize = 16, edgeSize = 8,
+  tile = true,
+  tileSize = 16,
+  edgeSize = 8,
   insets = { left = 2, right = 2, top = 2, bottom = 2 }
 }
 
@@ -37,12 +41,12 @@ settings.CreateTextBox = function(parent, text)
   local textbox = CreateFrame("EditBox", nil, parent)
   textbox.ShowTooltip = settings.ShowTooltip
 
-  textbox:SetTextColor(1,.8,.2,1)
+  textbox:SetTextColor(1, .8, .2, 1)
   textbox:SetJustifyH("RIGHT")
-  textbox:SetTextInsets(5,5,5,5)
+  textbox:SetTextInsets(5, 5, 5, 5)
   textbox:SetBackdrop(settings.textborder)
-  textbox:SetBackdropColor(.1,.1,.1,1)
-  textbox:SetBackdropBorderColor(.2,.2,.2,1)
+  textbox:SetBackdropColor(.1, .1, .1, 1)
+  textbox:SetBackdropBorderColor(.2, .2, .2, 1)
 
   textbox:SetHeight(18)
 
@@ -54,8 +58,25 @@ settings.CreateTextBox = function(parent, text)
   textbox:SetScript("OnEscapePressed", function(self)
     this:ClearFocus()
   end)
-
+  textbox:SetScript("OnTextChanged", function(self)
+    if this:GetParent().onchange then
+      this:GetParent().onchange()
+    end
+  end)
   return textbox
+end
+
+settings.CreateCheckBox = function(parent)
+  local checkbox = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+
+  checkbox:SetBackdrop(settings.textborder)
+  checkbox:SetHeight(18)
+  checkbox:SetWidth(18)
+  checkbox:SetScript("OnClick", function(self)
+    this:GetParent().onchange()
+  end)
+
+  return checkbox
 end
 
 settings.ShowTooltip = function(parent, strings)
@@ -70,9 +91,91 @@ settings.ShowTooltip = function(parent, strings)
   GameTooltip:Show()
 end
 
+settings.CreateScrollFrame = function(name, parent)
+  local f = CreateFrame("ScrollFrame", name, parent)
+
+  -- create slider
+  f.slider = CreateFrame("Slider", nil, f)
+  f.slider:SetOrientation('VERTICAL')
+  f.slider:SetPoint("TOPLEFT", f, "TOPRIGHT", -7, 0)
+  f.slider:SetPoint("BOTTOMRIGHT", 0, 0)
+  f.slider:SetThumbTexture("Interface\\BUTTONS\\WHITE8X8")
+  f.slider.thumb = f.slider:GetThumbTexture()
+  f.slider.thumb:SetHeight(50)
+  f.slider.thumb:SetTexture(.3, 1, .8, .5)
+
+  local selfevent = false
+  f.slider:SetScript("OnValueChanged", function()
+    if selfevent then return end
+    selfevent = true
+    f:SetVerticalScroll(this:GetValue())
+    f.UpdateScrollState()
+    selfevent = false
+  end)
+
+  f.UpdateScrollState = function()
+    f.slider:SetMinMaxValues(0, f:GetVerticalScrollRange())
+    f.slider:SetValue(f:GetVerticalScroll())
+
+    local m = f:GetHeight() + f:GetVerticalScrollRange()
+    local v = f:GetHeight()
+    local ratio = v / m
+
+    if ratio < 1 then
+      local size = math.floor(v * ratio)
+      f.slider.thumb:SetHeight(size)
+      f.slider:Show()
+    else
+      f.slider:Hide()
+    end
+  end
+
+  f.Scroll = function(self, step)
+    local step = step or 0
+
+    local current = f:GetVerticalScroll()
+    local max = f:GetVerticalScrollRange()
+    local new = current - step
+
+    if new >= max then
+      f:SetVerticalScroll(max)
+    elseif new <= 0 then
+      f:SetVerticalScroll(0)
+    else
+      f:SetVerticalScroll(new)
+    end
+
+    f:UpdateScrollState()
+  end
+
+  f:EnableMouseWheel(1)
+  f:SetScript("OnMouseWheel", function()
+    this:Scroll(arg1 * 10)
+  end)
+
+  return f
+end
+
+settings.CreateScrollChild = function(name, parent)
+  local f = CreateFrame("Frame", name, parent)
+
+  -- dummy values required
+  f:SetWidth(1)
+  f:SetHeight(1)
+  f:SetAllPoints(parent)
+
+  parent:SetScrollChild(f)
+
+  f:SetScript("OnUpdate", function()
+    this:GetParent():UpdateScrollState()
+  end)
+
+  return f
+end
+
 settings.OpenConfig = function(caption)
   -- Toggle Existing Dialog
-  local existing = getglobal("ShaguScanConfigDialog"..caption)
+  local existing = getglobal("ShaguScanConfigDialog" .. caption)
   if existing then
     if existing:IsShown() then existing:Hide() else existing:Show() end
     return
@@ -82,13 +185,20 @@ settings.OpenConfig = function(caption)
   if not ShaguScan_db.config[caption] then
     ShaguScan_db.config[caption] = {
       filter = "npc,infight,alive",
-      scale = 1, anchor = "CENTER", x = 0, y = 0, width = 75, height = 12, spacing = 4, maxrow = 20
+      scale = 1,
+      anchor = "CENTER",
+      x = 0,
+      y = 0,
+      width = 75,
+      height = 12,
+      spacing = 4,
+      maxrow = 20
     }
   end
 
   -- Main Dialog
-  local dialog = CreateFrame("Frame", "ShaguScanConfigDialog"..caption, UIParent)
-  table.insert(UISpecialFrames, "ShaguScanConfigDialog"..caption)
+  local dialog = CreateFrame("Frame", "ShaguScanConfigDialog" .. caption, UIParent)
+  table.insert(UISpecialFrames, "ShaguScanConfigDialog" .. caption)
 
   -- Save Shortcuts
   local config = ShaguScan_db.config[caption]
@@ -119,7 +229,7 @@ settings.OpenConfig = function(caption)
   dialog.save:SetHeight(18)
   dialog.save:SetFont(STANDARD_TEXT_FONT, 10)
   dialog.save:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -8, 8)
-  dialog.save:SetText("Save")
+  dialog.save:SetText(ShaguScan.Loc["Save"])
   dialog.save:SetScript("OnClick", function()
     local new_caption = dialog.caption:GetText()
 
@@ -157,7 +267,7 @@ settings.OpenConfig = function(caption)
   dialog.delete:SetHeight(18)
   dialog.delete:SetFont(STANDARD_TEXT_FONT, 10)
   dialog.delete:SetPoint("BOTTOMLEFT", dialog, "BOTTOMLEFT", 8, 8)
-  dialog.delete:SetText("Delete")
+  dialog.delete:SetText(ShaguScan.Loc["Delete"])
   dialog.delete:SetScript("OnClick", function()
     ShaguScan_db.config[caption] = nil
     this:GetParent():Hide()
@@ -182,8 +292,8 @@ settings.OpenConfig = function(caption)
   -- Backdrop
   local backdrop = CreateFrame("Frame", nil, dialog)
   backdrop:SetBackdrop(settings.backdrop)
-  backdrop:SetBackdropBorderColor(.2,.2,.2,1)
-  backdrop:SetBackdropColor(.2,.2,.2,1)
+  backdrop:SetBackdropBorderColor(.2, .2, .2, 1)
+  backdrop:SetBackdropColor(.2, .2, .2, 1)
 
   backdrop:SetPoint("TOPLEFT", dialog, "TOPLEFT", 8, -40)
   backdrop:SetPoint("BOTTOMRIGHT", dialog, "BOTTOMRIGHT", -8, 28)
@@ -194,30 +304,24 @@ settings.OpenConfig = function(caption)
   backdrop.pos = 8
 
   -- Filter
-  local caption = backdrop:CreateLabel("Filter:")
+  local caption = backdrop:CreateLabel(ShaguScan.Loc["Filter:"])
   caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
 
   dialog.filter = backdrop:CreateTextBox(config.filter)
+
   dialog.filter:SetPoint("TOPLEFT", backdrop, "TOPLEFT", 60, -backdrop.pos)
   dialog.filter:SetPoint("TOPRIGHT", backdrop, "TOPRIGHT", -8, -backdrop.pos)
+  dialog.filter:SetScript("OnMouseUp", function()
+    dialog.filter:ClearFocus()
+    settings.OpenFilter(dialog.caption:GetText())
+  end)
+  dialog.filter:SetScript("OnMouseDown", function()
+    dialog.filter:ClearFocus()
+  end)
   dialog.filter:SetScript("OnEnter", function()
     dialog.filter:ShowTooltip({
-      "Unit Filters",
-      "|cffaaaaaaA comma separated list of filters.",
-      " ",
-      { "|cffffffffplayer", "Player Characters" },
-      { "|cffffffffnpc", "NPC Units" },
-      { "|cffffffffinfight", "Infight Units" },
-      { "|cffffffffdead", "Dead Units" },
-      { "|cffffffffalive", "Living Units" },
-      { "|cffffffffhorde", "Horde Units" },
-      { "|cffffffffalliance", "Alliance Units" },
-      { "|cffffffffhardcore", "Hardcore Players" },
-      { "|cffffffffpve", "PvE Units" },
-      { "|cffffffffpvp", "PvP Enabled Units" },
-      { "|cfffffffficon", "Units With Raid Icons" },
-      " ",
-      "|cffffffffA complete list of filters can be found in the README."
+      ShaguScan.Loc["Unit Filters"],
+      ShaguScan.Loc["Click to open filter browser."],
     })
   end)
 
@@ -231,7 +335,7 @@ settings.OpenConfig = function(caption)
   backdrop.pos = backdrop.pos + 9
 
   -- Width
-  local caption = backdrop:CreateLabel("Width:")
+  local caption = backdrop:CreateLabel(ShaguScan.Loc["Width:"])
   caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
 
   dialog.width = backdrop:CreateTextBox(config.width)
@@ -239,8 +343,8 @@ settings.OpenConfig = function(caption)
   dialog.width:SetPoint("TOPRIGHT", backdrop, "TOPRIGHT", -8, -backdrop.pos)
   dialog.width:SetScript("OnEnter", function()
     dialog.width:ShowTooltip({
-      "Health Bar Width",
-      "|cffaaaaaaAn Integer Value in Pixels"
+      ShaguScan.Loc["Health Bar Width"],
+      ShaguScan.Loc["An Integer Value in Pixels"]
     })
   end)
 
@@ -250,7 +354,7 @@ settings.OpenConfig = function(caption)
   backdrop.pos = backdrop.pos + 18
 
   -- Height
-  local caption = backdrop:CreateLabel("Height:")
+  local caption = backdrop:CreateLabel(ShaguScan.Loc["Height:"])
   caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
 
   dialog.height = backdrop:CreateTextBox(config.height)
@@ -258,8 +362,8 @@ settings.OpenConfig = function(caption)
   dialog.height:SetPoint("TOPRIGHT", backdrop, "TOPRIGHT", -8, -backdrop.pos)
   dialog.height:SetScript("OnEnter", function()
     dialog.height:ShowTooltip({
-      "Health Bar Height",
-      "|cffaaaaaaAn Integer Value in Pixels"
+      ShaguScan.Loc["Health Bar Height"],
+      ShaguScan.Loc["An Integer Value in Pixels"]
     })
   end)
 
@@ -270,7 +374,7 @@ settings.OpenConfig = function(caption)
   backdrop.pos = backdrop.pos + 18
 
   -- Spacing
-  local caption = backdrop:CreateLabel("Spacing:")
+  local caption = backdrop:CreateLabel(ShaguScan.Loc["Spacing:"])
   caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
 
   dialog.spacing = backdrop:CreateTextBox(config.spacing)
@@ -278,8 +382,8 @@ settings.OpenConfig = function(caption)
   dialog.spacing:SetPoint("TOPRIGHT", backdrop, "TOPRIGHT", -8, -backdrop.pos)
   dialog.spacing:SetScript("OnEnter", function()
     dialog.spacing:ShowTooltip({
-      "Spacing Between Health Bars",
-      "|cffaaaaaaAn Integer Value in Pixels"
+      ShaguScan.Loc["Spacing Between Health Bars"],
+      ShaguScan.Loc["An Integer Value in Pixels"]
     })
   end)
 
@@ -290,7 +394,7 @@ settings.OpenConfig = function(caption)
   backdrop.pos = backdrop.pos + 18
 
   -- Max per Row
-  local caption = backdrop:CreateLabel("Max-Row:")
+  local caption = backdrop:CreateLabel(ShaguScan.Loc["Max-Row:"])
   caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
 
   dialog.maxrow = backdrop:CreateTextBox(config.maxrow)
@@ -298,8 +402,8 @@ settings.OpenConfig = function(caption)
   dialog.maxrow:SetPoint("TOPRIGHT", backdrop, "TOPRIGHT", -8, -backdrop.pos)
   dialog.maxrow:SetScript("OnEnter", function()
     dialog.maxrow:ShowTooltip({
-      "Maximum Entries Per Column",
-      "|cffaaaaaaA new column will be created once exceeded"
+      ShaguScan.Loc["Maximum Entries Per Column"],
+      ShaguScan.Loc["A new column will be created once exceeded"]
     })
   end)
 
@@ -313,7 +417,7 @@ settings.OpenConfig = function(caption)
   backdrop.pos = backdrop.pos + 9
 
   -- Anchor
-  local caption = backdrop:CreateLabel("Anchor:")
+  local caption = backdrop:CreateLabel(ShaguScan.Loc["Anchor:"])
   caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
 
   dialog.anchor = backdrop:CreateTextBox(config.anchor)
@@ -321,14 +425,14 @@ settings.OpenConfig = function(caption)
   dialog.anchor:SetPoint("TOPRIGHT", backdrop, "TOPRIGHT", -8, -backdrop.pos)
   dialog.anchor:SetScript("OnEnter", function()
     dialog.anchor:ShowTooltip({
-      "Window Anchor",
-      "|cffaaaaaaThe Anchor From Where Positions Are Calculated.",
+      ShaguScan.Loc["Window Anchor"],
+      ShaguScan.Loc["The Anchor From Where Positions Are Calculated."],
       " ",
-      {"TOP", "TOPLEFT"},
-      {"TOPRIGHT", "CENTER"},
-      {"LEFT", "RIGHT"},
-      {"BOTTOM", "BOTTOMLEFT"},
-      {"BOTTOMRIGHT", ""}
+      { "TOP",         "TOPLEFT" },
+      { "TOPRIGHT",    "CENTER" },
+      { "LEFT",        "RIGHT" },
+      { "BOTTOM",      "BOTTOMLEFT" },
+      { "BOTTOMRIGHT", "" }
     })
   end)
 
@@ -339,7 +443,7 @@ settings.OpenConfig = function(caption)
   backdrop.pos = backdrop.pos + 18
 
   -- Scale
-  local caption = backdrop:CreateLabel("Scale:")
+  local caption = backdrop:CreateLabel(ShaguScan.Loc["Scale:"])
   caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
 
   dialog.scale = backdrop:CreateTextBox(utils.round(config.scale, 2))
@@ -347,8 +451,8 @@ settings.OpenConfig = function(caption)
   dialog.scale:SetPoint("TOPRIGHT", backdrop, "TOPRIGHT", -8, -backdrop.pos)
   dialog.scale:SetScript("OnEnter", function()
     dialog.scale:ShowTooltip({
-      "Window Scale",
-      "|cffaaaaaaA floating point number, 1 equals 100%"
+      ShaguScan.Loc["Window Scale"],
+      ShaguScan.Loc["A floating point number, 1 equals 100%"]
     })
   end)
 
@@ -359,7 +463,7 @@ settings.OpenConfig = function(caption)
   backdrop.pos = backdrop.pos + 18
 
   -- Position-X
-  local caption = backdrop:CreateLabel("X-Position:")
+  local caption = backdrop:CreateLabel(ShaguScan.Loc["X-Position:"])
   caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
 
   dialog.x = backdrop:CreateTextBox(utils.round(config.x, 2))
@@ -367,8 +471,8 @@ settings.OpenConfig = function(caption)
   dialog.x:SetPoint("TOPRIGHT", backdrop, "TOPRIGHT", -8, -backdrop.pos)
   dialog.x:SetScript("OnEnter", function()
     dialog.x:ShowTooltip({
-      "X-Position of Window",
-      "|cffaaaaaaA Number in Pixels"
+      ShaguScan.Loc["X-Position of Window"],
+      ShaguScan.Loc["A Number in Pixels"]
     })
   end)
 
@@ -379,7 +483,7 @@ settings.OpenConfig = function(caption)
   backdrop.pos = backdrop.pos + 18
 
   -- Position-Y
-  local caption = backdrop:CreateLabel("Y-Position:")
+  local caption = backdrop:CreateLabel(ShaguScan.Loc["Y-Position:"])
   caption:SetPoint("TOPLEFT", backdrop, 10, -backdrop.pos)
 
   dialog.y = backdrop:CreateTextBox(utils.round(config.y, 2))
@@ -387,8 +491,8 @@ settings.OpenConfig = function(caption)
   dialog.y:SetPoint("TOPRIGHT", backdrop, "TOPRIGHT", -8, -backdrop.pos)
   dialog.y:SetScript("OnEnter", function()
     dialog.y:ShowTooltip({
-      "Y-Position of Window",
-      "|cffaaaaaaA Number in Pixels"
+      ShaguScan.Loc["Y-Position of Window"],
+      ShaguScan.Loc["A Number in Pixels"]
     })
   end)
 
@@ -397,5 +501,110 @@ settings.OpenConfig = function(caption)
   end)
   backdrop.pos = backdrop.pos + 18
 end
+settings.OpenFilter = function(caption)
+  local existing = getglobal("ShaguScanConfigFilterDialog" .. caption)
+  if existing then
+    if existing:IsShown() then existing:Hide() else existing:Show() end
+    return
+  end
+  local config = ShaguScan_db.config[caption]
+  if not config then return end
+  local configDialog = getglobal("ShaguScanConfigDialog" .. caption)
+  local filter = CreateFrame("Frame", "ShaguScanConfigFilterDialog" .. caption,
+    configDialog)
+  filter.caption = caption
+  filter:SetFrameStrata("DIALOG")
+  filter:SetPoint("TOPLEFT", configDialog, "TOPRIGHT", 0, 0)
+  filter:SetPoint("BOTTOMLEFT", configDialog, "BOTTOMRIGHT", 0, 0)
+  filter:SetWidth(264)
+  filter:SetBackdrop(settings.backdrop)
+  filter:SetBackdropColor(.2, .2, .2, 1)
+  filter:SetBackdropBorderColor(.2, .2, .2, 1)
+  filter.scroll = settings.CreateScrollFrame(nil, filter)
+  filter.scroll:SetPoint("TOPLEFT", 5, -10)
+  filter.scroll:SetPoint("BOTTOMRIGHT", -5, 5)
+  filter.scroll.box = settings.CreateScrollChild(nil, filter.scroll)
+  filter.scroll.box:SetWidth(244)
+  print(filter.scroll.box:GetWidth())
+  filter.settings = {}
 
+  local function loadData()
+    local filter_texts = { utils.strsplit(',', ShaguScan_db.config[caption].filter) }
+    for id, filter_text in pairs(filter_texts) do
+      local name, args = utils.strsplit(':', filter_text)
+      filter.settings[name].enable = true
+      filter.settings[name].arg = args or true
+      filter.settings[name].checkbox:SetChecked(true)
+      if filter.settings[name].input then
+        filter.settings[name].input:SetText(args)
+      end
+    end
+  end
+
+  local function saveData()
+    local filter_text = ""
+    for tag, set in pairs(filter.settings) do
+      if set.enable then
+        filter_text = filter_text .. tag
+        if type(set.arg) == "string" then
+          filter_text = filter_text .. ":" .. set.arg
+        end
+        filter_text = filter_text .. ","
+      end
+    end
+    --ShaguScan_db.config[caption].filter = string.sub(filter_text, 1, -2)
+    getglobal("ShaguScanConfigDialog" .. caption).filter:SetText(string.sub(filter_text, 1, -2))
+  end
+
+  local i = 0
+  for tag, ft in pairs(ShaguScan.filter) do
+    i = i + 1
+    filter.settings[tag] = CreateFrame("Button", nil, filter.scroll.box)
+    filter.settings[tag]:SetPoint("TOPLEFT", filter.scroll.box, "TOPLEFT", 5, -i * 24 + 5)
+    filter.settings[tag]:SetPoint("BOTTOMRIGHT", filter.scroll.box, "TOPRIGHT", 5, -i * 24 - 15)
+    
+    filter.settings[tag].name = ft.name
+    filter.settings[tag].hint = ft.hint
+    filter.settings[tag].enable = false
+    filter.settings[tag].arg = nil
+
+    filter.settings[tag].tex = filter.settings[tag]:CreateTexture("BACKGROUND")
+    filter.settings[tag].tex:SetAllPoints(filter.settings[tag])
+    filter.settings[tag].tex:SetTexture(0, 0, 0, 0.4)
+
+    filter.settings[tag].checkbox = settings.CreateCheckBox(filter.settings[tag])
+    filter.settings[tag].checkbox:SetPoint("LEFT", 5, 0)
+    filter.settings[tag].checkbox.ShowTooltip = settings.ShowTooltip
+
+    filter.settings[tag].label = settings.CreateLabel(filter.settings[tag], ft.name)
+    filter.settings[tag].label:SetPoint("LEFT", filter.settings[tag].checkbox, "RIGHT", 5, 0)
+    
+    filter.settings[tag].checkbox:SetScript("OnEnter", function()
+      this:ShowTooltip({
+        this:GetParent().hint,
+      })
+    end)
+    filter.settings[tag].checkbox:SetScript("OnLeave", function()
+      GameTooltip:Hide()
+    end)
+
+
+    if ft.needArg then
+      filter.settings[tag].input = settings.CreateTextBox(filter.settings[tag], "")
+      filter.settings[tag].input:SetWidth(120)
+      filter.settings[tag].input:SetHeight(18)
+      filter.settings[tag].input:SetPoint("RIGHT", filter.settings[tag], "RIGHT", -10, 0)
+       filter.settings[tag].input:SetBackdropBorderColor(.8, .8, .8, 1)
+    end
+    filter.settings[tag].onchange = function()
+      this:GetParent().enable = this:GetParent().checkbox:GetChecked()
+      this:GetParent().arg = this:GetParent().input and this:GetParent().input:GetText()
+      saveData()
+    end
+  end
+
+
+
+  loadData()
+end
 ShaguScan.settings = settings

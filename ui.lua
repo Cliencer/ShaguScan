@@ -296,7 +296,7 @@ ui:SetScript("OnUpdate", function()
       local visible = true
       for name, args in pairs(root.filter) do
         if filter[name] then
-          visible = visible and filter[name](guid, args)
+          visible = visible and filter[name].func(guid, args)
         end
       end
 
