@@ -29,6 +29,7 @@
         "SetRaidTargetIconTexture",
         "SetItemRef",
         "ITEM_QUALITY_COLORS",
-        "UNKNOWN"
+        "UNKNOWN",
+        "ColorPickerFrame"
     ]
 }

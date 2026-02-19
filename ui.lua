@@ -3,25 +3,40 @@ if ShaguScan.disabled then return end
 local utils = ShaguScan.utils
 local filter = ShaguScan.filter
 local settings = ShaguScan.settings
-
+local r1, r2 = pcall(UnitXP, "nop", "nop")
+local unitxp = r1 == true and r2 == true
 local ui = CreateFrame("Frame", nil, UIParent)
 
 ui.border = {
   edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-  tile = true, tileSize = 16, edgeSize = 8,
+  tile = true,
+  tileSize = 16,
+  edgeSize = 8,
   insets = { left = 2, right = 2, top = 2, bottom = 2 }
 }
 
 ui.background = {
   bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-  tile = true, tileSize = 16, edgeSize = 8,
+  tile = true,
+  tileSize = 16,
+  edgeSize = 8,
   insets = { left = 0, right = 0, top = 0, bottom = 0 }
 }
 
 ui.frames = {}
 
+local function fmtDistance(distance, decimals)
+  if not distance or tonumber(distance) == nil then return "" end
+
+  if not decimals then
+    decimals = 1
+  end
+
+  return string.format("%." .. decimals .. "f", distance)
+end
+
 ui.CreateRoot = function(parent, caption)
-  local frame = CreateFrame("Frame", "ShaguScan"..caption, parent)
+  local frame = CreateFrame("Frame", "ShaguScan" .. caption, parent)
   frame.id = caption
 
   frame:EnableMouse(true)
@@ -119,7 +134,7 @@ ui.BarUpdate = function()
   local level = utils.GetLevelString(this.guid)
   local level_color = utils.GetLevelColor(this.guid)
   local name = UnitName(this.guid)
-  this.text:SetText(level_color..level.."|r "..name)
+  this.text:SetText(level_color .. level .. "|r " .. name)
 
   -- update health bar border
   if this.hover then
@@ -145,6 +160,28 @@ ui.BarUpdate = function()
   else
     this.target_left:Hide()
     this.target_right:Hide()
+  end
+
+  if unitxp then
+    local distance = UnitXP("distanceBetween", "player", this.guid)
+    this.distance:SetText(fmtDistance(distance, 1))
+    if distance then
+      local r, g, b
+      local linearColorFrom = { 0, 1, 0 }
+      local linearColorTo = { 1, 0, 0 }
+      if distance < 8 then
+        distance = 8
+      elseif distance > 42 then
+        distance = 42
+      end
+
+      local p = (distance - 8) / (42 - 8)
+      r = linearColorFrom[1] + (linearColorTo[1] - linearColorFrom[1]) * p
+      g = linearColorFrom[2] + (linearColorTo[2] - linearColorFrom[2]) * p
+      b = linearColorFrom[3] + (linearColorTo[3] - linearColorFrom[3]) * p
+
+      this.distance:SetTextColor(r, g, b)
+    end
   end
 end
 
@@ -187,7 +224,7 @@ ui.CreateBar = function(parent, guid)
   frame.text = text
 
   -- create combat feedback text
-  local feedback = bar:CreateFontString(guid.."feedback"..GetTime(), "OVERLAY", "NumberFontNormalHuge")
+  local feedback = bar:CreateFontString(guid .. "feedback" .. GetTime(), "OVERLAY", "NumberFontNormalHuge")
   feedback:SetAlpha(.8)
   feedback:SetFont(DAMAGE_TEXT_FONT, 12, "OUTLINE")
   feedback:SetParent(bar)
@@ -224,6 +261,16 @@ ui.CreateBar = function(parent, guid)
   target_right:Hide()
   frame.target_right = target_right
 
+  local distance = bar:CreateFontString(guid .. "distance" .. GetTime(), "OVERLAY", "GameFontWhite")
+  distance:SetPoint("TOPLEFT", bar, "TOPRIGHT", 2, -2)
+  distance:SetPoint("BOTTOMLEFT", bar, "BOTTOMRIGHT", 2, 2)
+  distance:SetWidth(50)
+  distance:SetFont(STANDARD_TEXT_FONT, 9, "THINOUTLINE")
+  distance:SetJustifyH("LEFT")
+  if not unitxp then distance:Hide() end
+  frame.distance = distance
+
+
   -- create frame backdrops
   if pfUI and pfUI.uf then
     pfUI.api.CreateBackdrop(frame)
@@ -235,8 +282,8 @@ ui.CreateBar = function(parent, guid)
     local border = CreateFrame("Frame", nil, frame.bar)
     border:SetBackdrop(ui.border)
     border:SetBackdropColor(.2, .2, .2, 1)
-    border:SetPoint("TOPLEFT", frame.bar, "TOPLEFT", -2,2)
-    border:SetPoint("BOTTOMRIGHT", frame.bar, "BOTTOMRIGHT", 2,-2)
+    border:SetPoint("TOPLEFT", frame.bar, "TOPLEFT", -2, 2)
+    border:SetPoint("BOTTOMRIGHT", frame.bar, "BOTTOMRIGHT", 2, -2)
     frame.border = border
   end
 
@@ -245,7 +292,7 @@ end
 
 ui:SetAllPoints()
 ui:SetScript("OnUpdate", function()
-  if ( this.tick or 1) > GetTime() then return else this.tick = GetTime() + .5 end
+  if (this.tick or 1) > GetTime() then return else this.tick = GetTime() + .5 end
 
   -- remove old leftover frames
   for caption, root in pairs(ui.frames) do
@@ -265,8 +312,8 @@ ui:SetScript("OnUpdate", function()
     if root.lock then return end
 
     -- update position based on config
-    if not root.pos or root.pos ~= config.anchor..config.x..config.y..config.scale then
-      root.pos = config.anchor..config.x..config.y..config.scale
+    if not root.pos or root.pos ~= config.anchor .. config.x .. config.y .. config.scale then
+      root.pos = config.anchor .. config.x .. config.y .. config.scale
       root:ClearAllPoints()
       root:SetPoint(config.anchor, config.x, config.y)
       root:SetScale(config.scale)
@@ -309,23 +356,23 @@ ui:SetScript("OnUpdate", function()
           width = math.max(x + config.width, width)
         end
 
-        y = (count-1) * (config.height + config.spacing) + title_size
+        y = (count - 1) * (config.height + config.spacing) + title_size
         height = math.max(y + config.height + config.spacing, height)
 
         root.frames[guid] = root.frames[guid] or root:CreateBar(guid)
 
         -- update position if required
-        if not root.frames[guid].pos or root.frames[guid].pos ~= x..-y then
+        if not root.frames[guid].pos or root.frames[guid].pos ~= x .. -y then
           root.frames[guid]:ClearAllPoints()
           root.frames[guid]:SetPoint("TOPLEFT", root, "TOPLEFT", x, -y)
-          root.frames[guid].pos = x..-y
+          root.frames[guid].pos = x .. -y
         end
 
         -- update sizes if required
-        if not root.frames[guid].sizes or root.frames[guid].sizes ~= config.width..config.height then
+        if not root.frames[guid].sizes or root.frames[guid].sizes ~= config.width .. config.height then
           root.frames[guid]:SetWidth(config.width)
           root.frames[guid]:SetHeight(config.height)
-          root.frames[guid].sizes = config.width..config.height
+          root.frames[guid].sizes = config.width .. config.height
         end
 
         root.frames[guid]:Show()
