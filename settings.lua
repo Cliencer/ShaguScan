@@ -525,7 +525,6 @@ settings.OpenFilter = function(caption)
   filter.scroll:SetPoint("BOTTOMRIGHT", -5, 5)
   filter.scroll.box = settings.CreateScrollChild(nil, filter.scroll)
   filter.scroll.box:SetWidth(244)
-  print(filter.scroll.box:GetWidth())
   filter.settings = {}
 
   local function loadData()

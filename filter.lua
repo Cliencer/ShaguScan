@@ -1,7 +1,7 @@
 if ShaguScan.disabled then return end
 
 local filter = {}
-
+local filterIndex = {}
 filter.player = {
   func = function(unit)
     return UnitIsPlayer(unit) and true or false

@@ -25,6 +25,11 @@ ui.background = {
 
 ui.frames = {}
 
+-- Bar 对象池，用于复用
+ui.barPool = {}
+ui.barPoolSize = 0 -- 手动跟踪池大小
+ui.activeBars = {}
+
 local function fmtDistance(distance, decimals)
   if not distance or tonumber(distance) == nil then return "" end
 
@@ -69,6 +74,7 @@ ui.CreateRoot = function(parent, caption)
 
   -- assign/initialize elements
   frame.CreateBar = ui.CreateBar
+  frame.ReleaseBar = ui.ReleaseBar
   frame.frames = {}
 
   -- create title text
@@ -171,11 +177,11 @@ ui.BarUpdate = function()
       local linearColorTo = { 1, 0, 0 }
       if distance < 8 then
         distance = 8
-      elseif distance > 42 then
-        distance = 42
+      elseif distance > 200 then
+        distance = 200
       end
 
-      local p = (distance - 8) / (42 - 8)
+      local p = (distance - 8) / (200 - 8)
       r = linearColorFrom[1] + (linearColorTo[1] - linearColorFrom[1]) * p
       g = linearColorFrom[2] + (linearColorTo[2] - linearColorFrom[2]) * p
       b = linearColorFrom[3] + (linearColorTo[3] - linearColorFrom[3]) * p
@@ -194,100 +200,158 @@ ui.BarEvent = function()
   CombatFeedback_OnCombatEvent(arg2, arg3, arg4, arg5)
 end
 
+-- 从池中获取或创建新的 bar
 ui.CreateBar = function(parent, guid)
-  local frame = CreateFrame("Button", nil, parent)
-  frame.guid = guid
+  local frame
 
-  -- assign required events and scripts
-  frame:RegisterEvent("UNIT_COMBAT")
-  frame:SetScript("OnEvent", ui.BarEvent)
-  frame:SetScript("OnClick", ui.BarClick)
-  frame:SetScript("OnEnter", ui.BarEnter)
-  frame:SetScript("OnLeave", ui.BarLeave)
-  frame:SetScript("OnUpdate", ui.BarUpdate)
+  -- 尝试从对象池中获取可用的 bar
+  if ui.barPoolSize > 0 then
+    frame = ui.barPool[ui.barPoolSize]
+    ui.barPool[ui.barPoolSize] = nil
+    ui.barPoolSize = ui.barPoolSize - 1
 
-  -- create health bar
-  local bar = CreateFrame("StatusBar", nil, frame)
-  bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
-  bar:SetStatusBarColor(1, .8, .2, 1)
-  bar:SetMinMaxValues(0, 100)
-  bar:SetValue(20)
-  bar:SetAllPoints()
-  frame.bar = bar
-
-  -- create caption text
-  local text = frame.bar:CreateFontString(nil, "HIGH", "GameFontWhite")
-  text:SetPoint("TOPLEFT", bar, "TOPLEFT", 2, -2)
-  text:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -2, 2)
-  text:SetFont(STANDARD_TEXT_FONT, 9, "THINOUTLINE")
-  text:SetJustifyH("LEFT")
-  frame.text = text
-
-  -- create combat feedback text
-  local feedback = bar:CreateFontString(guid .. "feedback" .. GetTime(), "OVERLAY", "NumberFontNormalHuge")
-  feedback:SetAlpha(.8)
-  feedback:SetFont(DAMAGE_TEXT_FONT, 12, "OUTLINE")
-  feedback:SetParent(bar)
-  feedback:ClearAllPoints()
-  feedback:SetPoint("CENTER", bar, "CENTER", 0, 0)
-
-  frame.feedbackFontHeight = 14
-  frame.feedbackStartTime = GetTime()
-  frame.feedbackText = feedback
-
-  -- create raid icon textures
-  local icon = bar:CreateTexture(nil, "OVERLAY")
-  icon:SetWidth(16)
-  icon:SetHeight(16)
-  icon:SetPoint("RIGHT", frame, "RIGHT", -2, 0)
-  icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
-  icon:Hide()
-  frame.icon = icon
-
-  -- create target indicator
-  local target_left = bar:CreateTexture(nil, "OVERLAY")
-  target_left:SetWidth(8)
-  target_left:SetHeight(8)
-  target_left:SetPoint("LEFT", frame, "LEFT", -4, 0)
-  target_left:SetTexture("Interface\\AddOns\\ShaguScan\\img\\target-left")
-  target_left:Hide()
-  frame.target_left = target_left
-
-  local target_right = bar:CreateTexture(nil, "OVERLAY")
-  target_right:SetWidth(8)
-  target_right:SetHeight(8)
-  target_right:SetPoint("RIGHT", frame, "RIGHT", 4, 0)
-  target_right:SetTexture("Interface\\AddOns\\ShaguScan\\img\\target-right")
-  target_right:Hide()
-  frame.target_right = target_right
-
-  local distance = bar:CreateFontString(guid .. "distance" .. GetTime(), "OVERLAY", "GameFontWhite")
-  distance:SetPoint("TOPLEFT", bar, "TOPRIGHT", 2, -2)
-  distance:SetPoint("BOTTOMLEFT", bar, "BOTTOMRIGHT", 2, 2)
-  distance:SetWidth(50)
-  distance:SetFont(STANDARD_TEXT_FONT, 9, "THINOUTLINE")
-  distance:SetJustifyH("LEFT")
-  if not unitxp then distance:Hide() end
-  frame.distance = distance
-
-
-  -- create frame backdrops
-  if pfUI and pfUI.uf then
-    pfUI.api.CreateBackdrop(frame)
-    frame.border = frame.backdrop
+    -- 重置 parent 和 guid
+    frame:SetParent(parent)
+    frame.guid = guid
+    -- 重新注册事件（因为 SetParent 可能会影响事件）
+    frame:RegisterEvent("UNIT_COMBAT")
   else
-    frame:SetBackdrop(ui.background)
-    frame:SetBackdropColor(0, 0, 0, 1)
+    -- 池中没有可用的，创建新的
+    frame = CreateFrame("Button", nil, parent)
+    frame.guid = guid
 
-    local border = CreateFrame("Frame", nil, frame.bar)
-    border:SetBackdrop(ui.border)
-    border:SetBackdropColor(.2, .2, .2, 1)
-    border:SetPoint("TOPLEFT", frame.bar, "TOPLEFT", -2, 2)
-    border:SetPoint("BOTTOMRIGHT", frame.bar, "BOTTOMRIGHT", 2, -2)
-    frame.border = border
+    -- assign required events and scripts
+    frame:RegisterEvent("UNIT_COMBAT")
+    frame:SetScript("OnEvent", ui.BarEvent)
+    frame:SetScript("OnClick", ui.BarClick)
+    frame:SetScript("OnEnter", ui.BarEnter)
+    frame:SetScript("OnLeave", ui.BarLeave)
+    frame:SetScript("OnUpdate", ui.BarUpdate)
+
+    -- create health bar
+    local bar = CreateFrame("StatusBar", nil, frame)
+    bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    bar:SetStatusBarColor(1, .8, .2, 1)
+    bar:SetMinMaxValues(0, 100)
+    bar:SetValue(20)
+    bar:SetAllPoints()
+    frame.bar = bar
+
+    -- create caption text
+    local text = frame.bar:CreateFontString(nil, "HIGH", "GameFontWhite")
+    text:SetPoint("TOPLEFT", bar, "TOPLEFT", 2, -2)
+    text:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -2, 2)
+    text:SetFont(STANDARD_TEXT_FONT, 9, "THINOUTLINE")
+    text:SetJustifyH("LEFT")
+    frame.text = text
+
+    -- create combat feedback text
+    local feedback = bar:CreateFontString(guid .. "feedback" .. GetTime(), "OVERLAY", "NumberFontNormalHuge")
+    feedback:SetAlpha(.8)
+    feedback:SetFont(DAMAGE_TEXT_FONT, 12, "OUTLINE")
+    feedback:SetParent(bar)
+    feedback:ClearAllPoints()
+    feedback:SetPoint("CENTER", bar, "CENTER", 0, 0)
+
+    frame.feedbackFontHeight = 14
+    frame.feedbackStartTime = GetTime()
+    frame.feedbackText = feedback
+
+    -- create raid icon textures
+    local icon = bar:CreateTexture(nil, "OVERLAY")
+    icon:SetWidth(16)
+    icon:SetHeight(16)
+    icon:SetPoint("RIGHT", frame, "RIGHT", -2, 0)
+    icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
+    icon:Hide()
+    frame.icon = icon
+
+    -- create target indicator
+    local target_left = bar:CreateTexture(nil, "OVERLAY")
+    target_left:SetWidth(8)
+    target_left:SetHeight(8)
+    target_left:SetPoint("LEFT", frame, "LEFT", -4, 0)
+    target_left:SetTexture("Interface\\AddOns\\ShaguScan\\img\\target-left")
+    target_left:Hide()
+    frame.target_left = target_left
+
+    local target_right = bar:CreateTexture(nil, "OVERLAY")
+    target_right:SetWidth(8)
+    target_right:SetHeight(8)
+    target_right:SetPoint("RIGHT", frame, "RIGHT", 4, 0)
+    target_right:SetTexture("Interface\\AddOns\\ShaguScan\\img\\target-right")
+    target_right:Hide()
+    frame.target_right = target_right
+
+    local distance = bar:CreateFontString(guid .. "distance" .. GetTime(), "OVERLAY", "GameFontWhite")
+    distance:SetPoint("TOPLEFT", bar, "TOPRIGHT", 2, -2)
+    distance:SetPoint("BOTTOMLEFT", bar, "BOTTOMRIGHT", 2, 2)
+    distance:SetWidth(50)
+    distance:SetFont(STANDARD_TEXT_FONT, 9, "THINOUTLINE")
+    distance:SetJustifyH("LEFT")
+    if not unitxp then distance:Hide() end
+    frame.distance = distance
+
+    -- create frame backdrops
+    if pfUI and pfUI.uf then
+      pfUI.api.CreateBackdrop(frame)
+      frame.border = frame.backdrop
+    else
+      frame:SetBackdrop(ui.background)
+      frame:SetBackdropColor(0, 0, 0, 1)
+
+      local border = CreateFrame("Frame", nil, frame.bar)
+      border:SetBackdrop(ui.border)
+      border:SetBackdropColor(.2, .2, .2, 1)
+      border:SetPoint("TOPLEFT", frame.bar, "TOPLEFT", -2, 2)
+      border:SetPoint("BOTTOMRIGHT", frame.bar, "BOTTOMRIGHT", 2, -2)
+      frame.border = border
+    end
   end
 
+  -- 重置状态
+  frame.hover = false
+  frame.pos = nil
+  frame.sizes = nil
+
+  -- 记录到活跃 bars 表中
+  ui.activeBars[frame] = true
+
   return frame
+end
+
+-- 将 bar 回收到对象池中
+ui.ReleaseBar = function(parent, guid)
+  local frame = parent.frames[guid]
+  if not frame then return end
+
+  -- 隐藏 bar
+  frame:Hide()
+
+  -- 取消事件注册
+  frame:UnregisterEvent("UNIT_COMBAT")
+
+  -- 清除 guid 关联
+  frame.guid = nil
+
+  -- 从父框架的 frames 表中移除
+  parent.frames[guid] = nil
+
+  -- 从活跃 bars 表中移除
+  ui.activeBars[frame] = nil
+
+  -- 添加到对象池（使用 table.insert 兼容旧版本）
+  ui.barPoolSize = ui.barPoolSize + 1
+  ui.barPool[ui.barPoolSize] = frame
+end
+
+-- 清理所有对象池中的 bars（可选，用于内存紧张时）
+ui.ClearBarPool = function()
+  for i = 1, ui.barPoolSize do
+    ui.barPool[i]:SetParent(nil)
+    ui.barPool[i] = nil
+  end
+  ui.barPoolSize = 0
 end
 
 ui:SetAllPoints()
@@ -297,7 +361,11 @@ ui:SetScript("OnUpdate", function()
   -- remove old leftover frames
   for caption, root in pairs(ui.frames) do
     if not ShaguScan_db.config[caption] then
-      ui.frames[caption]:Hide()
+      -- 回收所有子 bars 到对象池
+      for guid, _ in pairs(root.frames) do
+        root:ReleaseBar(guid)
+      end
+      root:Hide()
       ui.frames[caption] = nil
     end
   end
@@ -334,6 +402,9 @@ ui:SetScript("OnUpdate", function()
       root.filter_conf = config.filter
     end
 
+    -- 跟踪当前应该显示的 guids
+    local visibleGuids = {}
+
     -- run through all guids and fill with bars
     local title_size = 12 + config.spacing
     local width, height = config.width, config.height + title_size
@@ -341,7 +412,9 @@ ui:SetScript("OnUpdate", function()
     for guid, time in pairs(ShaguScan.core.guids) do
       -- apply filters
       local visible = true
+      if UnitIsPlayer(guid) and UnitName("player") == UnitName(guid) then visible = false end
       for name, args in pairs(root.filter) do
+        if not visible then break end
         if filter[name] then
           visible = visible and filter[name].func(guid, args)
         end
@@ -350,6 +423,7 @@ ui:SetScript("OnUpdate", function()
       -- display element if filters allow it
       if UnitExists(guid) and visible then
         count = count + 1
+        visibleGuids[guid] = true
 
         if count > config.maxrow then
           count, x = 1, x + config.width + config.spacing
@@ -359,26 +433,35 @@ ui:SetScript("OnUpdate", function()
         y = (count - 1) * (config.height + config.spacing) + title_size
         height = math.max(y + config.height + config.spacing, height)
 
-        root.frames[guid] = root.frames[guid] or root:CreateBar(guid)
+        -- 尝试从对象池获取或创建新 bar
+        local bar = root.frames[guid]
+        if not bar then
+          bar = root:CreateBar(guid)
+          root.frames[guid] = bar
+        end
 
         -- update position if required
-        if not root.frames[guid].pos or root.frames[guid].pos ~= x .. -y then
-          root.frames[guid]:ClearAllPoints()
-          root.frames[guid]:SetPoint("TOPLEFT", root, "TOPLEFT", x, -y)
-          root.frames[guid].pos = x .. -y
+        if not bar.pos or bar.pos ~= x .. -y then
+          bar:ClearAllPoints()
+          bar:SetPoint("TOPLEFT", root, "TOPLEFT", x, -y)
+          bar.pos = x .. -y
         end
 
         -- update sizes if required
-        if not root.frames[guid].sizes or root.frames[guid].sizes ~= config.width .. config.height then
-          root.frames[guid]:SetWidth(config.width)
-          root.frames[guid]:SetHeight(config.height)
-          root.frames[guid].sizes = config.width .. config.height
+        if not bar.sizes or bar.sizes ~= config.width .. config.height then
+          bar:SetWidth(config.width)
+          bar:SetHeight(config.height)
+          bar.sizes = config.width .. config.height
         end
 
-        root.frames[guid]:Show()
-      elseif root.frames[guid] then
-        root.frames[guid]:Hide()
-        root.frames[guid] = nil
+        bar:Show()
+      end
+    end
+
+    -- 回收不再需要的 bars（使用 ReleaseBar 代替直接隐藏和删除）
+    for guid, bar in pairs(root.frames) do
+      if not visibleGuids[guid] then
+        root:ReleaseBar(guid)
       end
     end
 
